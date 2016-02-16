@@ -139,8 +139,6 @@ class debruijn_graph {
   }
 
   vector<node_type> all_preds(const node_type & v) const {
-    assert(v < num_nodes());
-    assert(x < sigma + 1);
     // node u -> v : edge i -> j
     size_t j = get<0>(v);
     symbol_type y = _symbol_access(j);
@@ -181,6 +179,18 @@ class debruijn_graph {
   // which is a saturated debruijn graph of k=31. Which is unlikely.
   // Hopefully an iterator-based API (like BGL) will fix this issue
   ssize_t outgoing(size_t u, symbol_type x) const {
+    ssize_t edge = outgoing_edge(u, x);
+    if (edge == -1)
+      return -1;
+    else
+      return _edge_to_node(edge);
+  }
+
+  // The signed return type is worrying, since it halves the possible answers...
+  // but it will only face problems with graphs that have over 2^63 ~= 4^31 edges,
+  // which is a saturated debruijn graph of k=31. Which is unlikely.
+  // Hopefully an iterator-based API (like BGL) will fix this issue
+  ssize_t outgoing_edge(size_t u, symbol_type x) const {
     assert(u < num_nodes());
     assert(x < sigma + 1);
     if (x == 0) return -1;
@@ -189,11 +199,14 @@ class debruijn_graph {
     size_t last  = get<1>(range);
     // Try both with and without a flag
     for (symbol_type c = _with_edge_flag(x,false); c <= _with_edge_flag(x, true); c++) {
-      size_t most_recent = m_edges.select(m_edges.rank(last+1, c), c);
+      size_t rnk = m_edges.rank(last+1, c);
+      if (rnk == 0)
+	continue;
+      size_t most_recent = m_edges.select(rnk, c);
       // if within range, follow forward
       if (first <= most_recent && most_recent <= last) {
         // Don't have to check fwd for -1 since we checked for $ above
-        return _edge_to_node(_forward(most_recent));
+        return _forward(most_recent);
       }
     }
     return -1;
@@ -201,7 +214,7 @@ class debruijn_graph {
 
   // Added for DCC. Will remove the other one later and rename this one.
   ssize_t interval_node_outgoing(const node_type & u, symbol_type x) const {
-    assert(u < num_nodes());
+    //assert(u < num_nodes());
     assert(x < sigma + 1);
     if (x == 0) return -1;
     //auto range = _node_range(u);
@@ -376,11 +389,18 @@ class debruijn_graph {
   ssize_t _forward(size_t i, symbol_type & x) const {
     assert(i < num_edges());
     x = _strip_edge_flag(m_edges[i]);
+    symbol_type fullx =_with_edge_flag(x, false);
     // if x == 0 ($) then we can't follow the edge
     // (should maybe make backward consistent with this, but using the edge 0 loop for node label generation).
     if (x == 0) return -1;
+
+    // if this is flagged, then reset i to the corresponding unflagged symbol and use that as the starting point
+    if (m_edges[i] & 1) {
+      i = m_edges.select(m_edges.rank(i, fullx), fullx);
+    }
+
     size_t start = _symbol_start(x);
-    size_t nth   = m_edges.rank(i, _with_edge_flag(x, false));
+    size_t nth   = m_edges.rank(i, fullx);
     size_t next  = m_node_select(m_node_rank(start+1) + nth);
     return next;
   }
