@@ -134,8 +134,9 @@ void find_bubbles(const debruijn_graph_shifted<> &dbg, sd_vector<> &colors, colo
                 branch_labels[branch_num] += base[x];
                 // build color mask
                 color_bv color_mask = 0;
-                for (int c = 0; c < num_colors; c++)
-                    color_mask |= colors[edge * num_colors + c] << c;
+                for (int c = 0; c < num_colors; c++) {
+		    color_mask.set(c, colors[edge*num_colors+c]);
+		}
                 branch_color[branch_num] = color_mask;
 
                 // walk along edges until we encounter 
